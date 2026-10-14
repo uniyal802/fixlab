@@ -11,3 +11,5 @@ During project preparation, a real local Ollama `qwen2.5-coder:7b` request retur
 Docker was not installed on the preparation machine. Container integration tests are provided but not claimed as locally verified. User requested completion of project files without installing Docker.
 
 Browser edition: the live runtime check was executed in Chrome. Original average([]) failed; repaired average([]) and normal-input tests passed (2 tests; 100% statement-line coverage). WebGPU initialized on the Apple GPU. AI output verification is recorded after actual inference.
+
+GitHub Actions CI run 38566737696 completed successfully, including Docker integration tests. A real 1.5B WebLLM inference generated the average empty-input fix and regression tests in Chrome; Markdown fences in returned code fields are normalized before execution.
