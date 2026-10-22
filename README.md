@@ -32,6 +32,7 @@ FixLab is an AI-assisted Python debugging workbench. It analyzes a Python module
 - Python syntax validation and normalization of generated tests that omit imports.
 - Reviewable diffs, editable revisions, session history, review decisions, and JSON/Python exports.
 - Original-versus-fixed execution with test counts, failures, errors, skips, duration, and statement-line coverage.
+- A 21-case labeled evaluation harness with independent reference tests, Wilson confidence intervals, and mutation checks; run it before quoting any model-quality figures.
 - Docker execution limits for the local development runner; a browser Worker/iframe sandbox for the Pages edition.
 - GitHub Actions CI on pushes and pull requests.
 
@@ -135,6 +136,8 @@ Keep claims about model quality, performance, usage, coverage, and production re
 - [Architecture and engineering decisions](docs/ARCHITECTURE.md)
 - [Demo and resume notes](docs/DEMO.md)
 - [Verification record](docs/VERIFICATION.md)
+- [Product workflow](docs/WORKFLOW.md)
+- [Evaluation harness](docs/EVALUATION.md)
 - [GitHub workflow and project setup](docs/GITHUB_WORKFLOW.md)
 - [Coding-agent guide](AGENTS.md)
 - [Scaling roadmap](SCALE_ROADMAP.md)

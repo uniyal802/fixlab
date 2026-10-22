@@ -1,6 +1,6 @@
 # FixLab product and scaling roadmap
 
-This roadmap moves FixLab from a verified local/browser MVP toward a portfolio-ready developer tool with a safe hosted workflow. It separates features already available from proposed work; estimates and performance targets are intentionally omitted until workloads are measured.
+This roadmap moves FixLab from a local/browser MVP toward a useful debugging product with a safe, reviewable GitHub workflow. Shipped capabilities and planned work are labeled separately; targets are proposals until measured. Track delivery in the [FixLab Product Roadmap project](https://github.com/users/uniyal802/projects/8).
 
 ## Current baseline
 
@@ -17,18 +17,30 @@ This roadmap moves FixLab from a verified local/browser MVP toward a portfolio-r
 4. Establish product boundaries, privacy, and execution isolation before accepting public user code.
 5. Measure latency, cost, reliability, and adoption before stating performance or business results.
 
+## Milestones and scope
+
+| Milestone | Scope | Status | Exit criteria |
+| --- | --- | --- | --- |
+| M0 · Working prototype | Local Ollama/Docker app and public browser edition | Complete | Both editions documented; CI and demo links available |
+| M1 · Trustworthy public demo | Refined landing page, product workflow, labeled evaluation harness, honest limitations | In progress | Demo is easy to understand; dataset checks pass in CI; evaluation claims link to reproducible reports |
+| M2 · Reliable local jobs | Durable job records, queue/worker interface, cancellation, retry, bounded logs | Planned | Restart-safe jobs with tested state transitions and hard deadlines |
+| M3 · GitHub-connected investigations | Explicit repo authorization, branch/file selection, revision provenance | Planned | Revocable least-privilege access and owner-scoped source records |
+| M4 · Reviewable coding-agent changes | Isolated agent task, constrained branch, CI results, user-approved pull request | Planned | Agent output is auditable; no automatic merge; user approves PR creation |
+| M5 · Hosted service | Identity, quotas, durable storage, hardened execution workers, monitoring, rollback | Planned | Tenant isolation and operational readiness demonstrated before public code execution |
+
 ## Step-by-step plan
 
-### Step 1 — Make the repository portfolio-ready
+### Step 1 — Make the repository and demo portfolio-ready
 
-**Status: documentation updated in this branch.**
+**Status: in progress.**
 
-- Explain the current product workflow, architecture, setup, verification, and known limitations.
+- Explain the current product workflow, architecture, setup, verification, evaluation method, and known limitations.
+- Make the public browser edition communicate the workflow and its real trust boundaries clearly.
 - Keep resume wording grounded in features that exist and can be demonstrated.
 - Add contribution guidance, coding-agent instructions, and pull request/issue templates.
 - Add prominent links to the source, CI, live browser edition, and roadmap.
 
-**Acceptance:** a new developer can run the project, understand the two editions, reproduce the demo, and distinguish shipped features from roadmap items.
+**Acceptance:** a new developer can run the project, understand the two editions, reproduce the demo, and distinguish shipped features from roadmap items. The benchmark validates every reference fix and fails the build if any case is inconsistent.
 
 ### Step 2 — Use GitHub for visible project planning
 
@@ -87,7 +99,7 @@ This roadmap moves FixLab from a verified local/browser MVP toward a portfolio-r
 
 ## First implementation slice
 
-The next code milestone should be **durable jobs**, because both model inference and test execution are slow synchronous requests today. Implement job records and state transitions, then submit/status/result/cancel endpoints and a separate worker entry point. Preserve the local workflow while moving execution behind the worker interface. This creates the foundation for bounded concurrency before adding accounts, repository access, agents, or pull requests.
+After the public demo/evaluation milestone, the next code milestone should be **durable jobs**, because both model inference and test execution are slow synchronous requests today. Implement job records and state transitions, then submit/status/result/cancel endpoints and a separate worker entry point. Preserve the local workflow while moving execution behind the worker interface. This creates the foundation for bounded concurrency before adding accounts, repository access, agents, or pull requests.
 
 Suggested initial service objectives to validate with real measurements:
 
