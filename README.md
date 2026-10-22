@@ -1,88 +1,151 @@
-# FixLab — AI Debugging & Testing Assistant
+# FixLab
 
-A runnable local MVP combining bug analysis, reviewable patches, generated regression tests, session history, and original-versus-fixed execution.
+**Find the bug. Review the patch. Prove it with regression tests.**
 
-## Features
+[![CI](https://github.com/uniyal802/fixlab/actions/workflows/ci.yml/badge.svg)](https://github.com/uniyal802/fixlab/actions/workflows/ci.yml) [![Live demo](https://img.shields.io/badge/demo-GitHub%20Pages-222?logo=github)](https://uniyal802.github.io/fixlab/)
 
-- Real local AI analysis with Ollama and syntax-validated patches.
-- Missing solution imports in generated tests repaired automatically.
-- Python file import, diff/code/test tabs and editable revisions.
-- Isolated original-versus-fixed runs and numeric coverage reports.
-- Review decisions, saved history, session deletion, JSON and Python exports.
-- Live AI/Docker readiness indicators.
-- Unit/API tests, Docker integration tests and GitHub Actions CI.
+FixLab is an AI-assisted Python debugging workbench. It analyzes a Python module and an error description, proposes a corrected version with tests, shows the patch for review, and runs the same tests against the original and updated code.
 
-## Start the dashboard
+| Project link | Status |
+| --- | --- |
+| Live browser edition | [Open FixLab on GitHub Pages](https://uniyal802.github.io/fixlab/) |
+| Source | [github.com/uniyal802/fixlab](https://github.com/uniyal802/fixlab) |
+| Project board | [FixLab Product Roadmap](https://github.com/users/uniyal802/projects/8) |
+| Continuous integration | [GitHub Actions](https://github.com/uniyal802/fixlab/actions/workflows/ci.yml) |
+| GitHub deployment history | [Deployments](https://github.com/uniyal802/fixlab/deployments) |
+| GitHub workflow guide | [Issues, pull requests, agents, projects, and deployment](docs/GITHUB_WORKFLOW.md) |
+| Product roadmap | [SCALE_ROADMAP.md](SCALE_ROADMAP.md) |
 
-Requires Python 3.9+. No Python packages are required.
+> The browser edition runs inference and Python tests on the user's device. The local backend is a single-user development MVP. It is not a hosted multi-user service, and it does not currently connect to GitHub repositories or create pull requests.
 
-```sh
-cd /path/to/fixlab
+## Product workflow
+
+1. Provide a Python module and the error or unexpected behavior.
+2. Generate an explanation, a complete proposed module, regression tests, and a unified diff.
+3. Review or edit the generated code and tests.
+4. Run the same test suite against the original and proposed code in isolated environments.
+5. Inspect the test output and statement-line coverage, then record a review decision or export the session.
+
+## Current capabilities
+
+- Real local model inference with Ollama in the local edition, and WebGPU inference in the browser edition.
+- Python syntax validation and normalization of generated tests that omit imports.
+- Reviewable diffs, editable revisions, session history, review decisions, and JSON/Python exports.
+- Original-versus-fixed execution with test counts, failures, errors, skips, duration, and statement-line coverage.
+- A 21-case labeled evaluation harness with independent reference tests, Wilson confidence intervals, and mutation checks; run it before quoting any model-quality figures.
+- Docker execution limits for the local development runner; a browser Worker/iframe sandbox for the Pages edition.
+- GitHub Actions CI on pushes and pull requests.
+
+## Run locally
+
+Requirements: Python 3.9 or newer. The local HTTP server and application code use the Python standard library.
+
+```bash
+git clone https://github.com/uniyal802/fixlab.git
+cd fixlab
 ./start.sh
 ```
 
-Open http://127.0.0.1:8000. Click **Load example**, then **Analyze & generate tests**.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000), load the example, and follow the readiness instructions in the dashboard.
 
-## Connect real AI
+### Enable AI analysis
 
-Install Ollama from https://ollama.com, start it, and pull the model:
+Install [Ollama](https://ollama.com), start it, and download the default model:
 
-```sh
+```bash
 ollama pull qwen2.5-coder:7b
 ```
 
-Ollama normally listens at http://127.0.0.1:11434. Set `OLLAMA_URL` and `OLLAMA_MODEL` in the server environment to change these. Hardware requirements and latency depend on the model. No simulated AI results are returned when the provider is unavailable.
+The default Ollama endpoint is `http://127.0.0.1:11434`. Configure `OLLAMA_URL` or `OLLAMA_MODEL` in the server environment to use another endpoint or model. Model memory and response time depend on the selected model and hardware.
 
-## Enable test execution
+### Enable isolated test execution
 
-Install and start Docker, then build the local runner image:
+Install and start Docker, then build the runner image from the repository root:
 
-```sh
+```bash
 docker build -f Dockerfile.runner -t fixlab-runner:local .
 ```
 
-Review generated code and tests, then click **Run isolated tests**. Each version runs with no network, a read-only root and submission mount, an unprivileged user, dropped capabilities, process/CPU/memory limits, and a 20-second timeout. There is no host-code execution fallback. The dashboard reports test counts, failures, errors, skips, execution time, and AST statement-line coverage of solution.py; this is not branch coverage. Zero-test and all-skipped suites fail. Output displayed per run is capped at 32 KB.
+The local runner starts a fresh container for each original/fixed execution. It uses no network, a read-only root and submission mount, an unprivileged user, dropped capabilities, CPU/memory/process limits, and a 20-second deadline. It does not fall back to executing submitted code in the API process. Displayed output is capped at 32 KB.
 
-Docker is a development isolation boundary, not a hardened public multi-tenant execution service. Do not expose this MVP publicly. Before production, add authentication, authorization, stronger execution isolation, job quotas, bounded disk/log storage, and deployment-specific security review. AI-generated tests can be wrong and passing tests do not prove correctness.
+These settings are useful for local development, but Docker alone is not a hardened multi-tenant execution service. Do not expose the local backend publicly.
+
+## Browser edition
+
+The static edition is served from [`docs/`](docs/). It runs Qwen2.5-Coder-1.5B inference with WebLLM/WebGPU and executes Python tests with Pyodide in a Worker hosted in an opaque-origin iframe. The model downloads on first use; a supported browser and GPU are required. Sessions remain in that browser's local storage, with a 30-session cap. No FixLab AI server is used for this edition.
+
+Deployment is provided by GitHub Pages: [uniyal802.github.io/fixlab](https://uniyal802.github.io/fixlab/). If the link is unavailable, check the repository's **Settings → Pages** configuration.
 
 ## Architecture
 
-- `frontend/`: responsive dashboard, patch/test tabs, review, exports, history.
-- `backend/server.py`: same-origin HTTP API, bound to loopback.
-- `backend/core.py`: Ollama integration, response validation, unified diffs, SQLite persistence, container orchestration.
-- `backend/runner.py`: unittest discovery and failure propagation.
-- `data/sessions.db`: generated locally; excluded from source control.
+```mermaid
+flowchart LR
+    Browser[Browser dashboard] --> API[Local Python HTTP API]
+    API --> Ollama[Ollama model]
+    API --> SQLite[(Local session database)]
+    API --> Original[Disposable Docker runner]
+    API --> Fixed[Disposable Docker runner]
+    Original --> Results[Test and coverage reports]
+    Fixed --> Results
+    Results --> Browser
+```
 
-This first version uses vanilla JavaScript, standard-library Python and SQLite so it runs without package installation. React, FastAPI and PostgreSQL migration, GitHub integration, background jobs, remain future work. Numeric statement-line coverage is included.
+The local edition uses a vanilla JavaScript frontend, a standard-library Python HTTP server, SQLite, Ollama, and Docker. The browser edition is a separate static application with client-side model inference and execution. See [the architecture notes](docs/ARCHITECTURE.md) for execution boundaries and data handling.
 
-## Project documentation
+## API overview
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Demo and resume notes](docs/DEMO.md)
-- [Verification](docs/VERIFICATION.md)
+The local edition exposes a same-origin JSON API:
 
-## API
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Check configured model and Docker runner readiness. |
+| `POST /api/analyze` | Analyze submitted code and generate a patch and tests. |
+| `GET /api/sessions` | List recent local sessions. |
+| `GET /api/sessions/<id>` | Retrieve one local session. |
+| `POST /api/edit` | Save a revised proposed module and tests. |
+| `POST /api/run` | Run original and proposed code through the same tests. |
+| `POST /api/review` | Record an accepted or rejected review decision. |
+| `POST /api/delete` | Delete a local session. |
 
-- `GET /api/health`: local model and Docker/image readiness.
-- `POST /api/edit`: `{ "id": "...", "fixed_code": "...", "tests": "..." }`; resets evidence and review.
-- `POST /api/delete`: `{ "id": "..." }`; permanently deletes the local session.
-- `POST /api/analyze`: `{ "code": "...", "error": "..." }`
-- `GET /api/sessions` and `GET /api/sessions/<id>`
-- `POST /api/run`: `{ "id": "..." }`
-- `POST /api/review`: `{ "id": "...", "review": "accepted" }` (or `rejected`)
-
-Accepting a patch records a review decision; it does not alter a repository. Saved results and source can be exported as JSON. Sessions are stored locally in plaintext.
+Session data is stored locally in plaintext. Accepting a patch records a review decision; it does not change a Git repository.
 
 ## Verification
 
-```sh
+Run the unit and API suite from the repository root:
+
+```bash
 python3 -m unittest discover -s tests -v
 ```
 
-Unit/API tests cover validation, imports, persistence, revisions, routes, trusted runner reports and refusing execution without Docker. Docker integration tests run when the local image and daemon are available. To verify the complete flow, run the example with Ollama and Docker configured and confirm the original fails while the fixed module passes.
+The CI workflow also builds the Docker runner and checks the JavaScript syntax. Docker integration tests run when Docker is available. See [verification notes](docs/VERIFICATION.md) for coverage and known limitations.
 
-## Portfolio demo
+## GitHub workflow and planned integrations
 
-Show the empty-list average bug, AI explanation, patch diff, regression tests, original failure, fixed pass, coverage output, and saved review. Record measured results before making performance or reliability claims in your resume.
+This repository has a GitHub Project board, issue forms, coding-agent instructions, PR templates, and CI for pushes and pull requests. The FixLab application itself does not yet integrate with GitHub Issues or Projects, run coding agents, import repositories, or open pull requests; those are planned product capabilities in the [scaling roadmap](SCALE_ROADMAP.md). Until repository authorization and a safe patch workflow are implemented, apply exported patches manually and review all generated code.
 
-References: [Ollama API](https://github.com/ollama/ollama/blob/main/docs/api.md), [Docker run](https://docs.docker.com/reference/cli/docker/container/run/).
+## Portfolio and resume
+
+Suggested resume bullet, after personally reproducing the listed flow:
+
+> Built FixLab, an AI-assisted Python debugging workbench that generates reviewable patches and regression tests, compares original and proposed code in isolated runners, and reports test and statement-line coverage using Ollama, SQLite, and Docker.
+
+Keep claims about model quality, performance, usage, coverage, and production readiness tied to results you have measured. [Portfolio demo steps](docs/DEMO.md) describe a concise walkthrough.
+
+## Project documentation
+
+- [Architecture and engineering decisions](docs/ARCHITECTURE.md)
+- [Demo and resume notes](docs/DEMO.md)
+- [Verification record](docs/VERIFICATION.md)
+- [Product workflow](docs/WORKFLOW.md)
+- [Evaluation harness](docs/EVALUATION.md)
+- [GitHub workflow and project setup](docs/GITHUB_WORKFLOW.md)
+- [Coding-agent guide](AGENTS.md)
+- [Scaling roadmap](SCALE_ROADMAP.md)
+
+## Safety and limitations
+
+- AI-generated code and tests may be incorrect. A passing test suite is evidence, not a correctness proof.
+- Statement-line coverage is not branch coverage.
+- The local backend has no authentication or per-user authorization and stores sessions locally in plaintext.
+- Docker is a development isolation boundary, not a hardened public multi-tenant service. A production service requires stronger execution isolation, authentication, quotas, bounded storage, and deployment-specific security review.
+- Do not submit secrets or sensitive source code to a model or environment unless you have reviewed its data handling.
