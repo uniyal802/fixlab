@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a user or developer workflow for FixLab.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Who has this problem, and when does it occur?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed workflow
+      description: Describe the user steps and desired outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable outcomes that would make this complete.
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Local workbench
+        - Browser edition
+        - GitHub integration
+        - Coding-agent workflow
+        - Hosted service and scaling
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Data, permissions, or security considerations
+      description: Note repository access, submitted code, secrets, or retention implications.
+    validations:
+      required: false

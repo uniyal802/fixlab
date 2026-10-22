@@ -1,35 +1,63 @@
 # Architecture and engineering decisions
 
-FixLab is a local Python debugging workbench. The browser calls a same-origin HTTP API. Ollama proposes a complete corrected module and unittest suite. The backend parses Python syntax, repairs missing imports of module functions/classes, computes a unified diff, and saves a session in SQLite. The user can revise and review the suggestion.
+FixLab has two editions with different execution and persistence models:
+
+| Edition | Interface and API | Model inference | Test execution | Session storage |
+| --- | --- | --- | --- | --- |
+| Local | Vanilla JavaScript served by the Python standard-library HTTP server | Ollama on the user's machine | Docker runner container | SQLite on the user's machine |
+| Browser | Static app in `docs/`, served by GitHub Pages | WebLLM with WebGPU on the user's device | Pyodide in a Worker hosted in an opaque-origin iframe | Browser `localStorage` (30 sessions maximum) |
+
+The editions offer a similar product workflow, but use separate UI assets and different runtime paths. The local API does not currently connect to GitHub or create pull requests.
+
+## Local request flow
 
 ```mermaid
-flowchart LR
-    Browser[Dashboard] --> API[Local Python API]
-    API --> AI[Ollama model]
-    API --> DB[(SQLite sessions)]
-    API --> Original[Isolated original-code container]
-    API --> Fixed[Isolated fixed-code container]
-    Original --> Report[Tests and coverage report]
-    Fixed --> Report
-    Report --> Browser
+sequenceDiagram
+    actor User
+    participant UI as Browser UI
+    participant API as Python API
+    participant Model as Ollama
+    participant DB as SQLite
+    participant Docker as Runner container
+    User->>UI: Submit module and error
+    UI->>API: POST /api/analyze
+    API->>Model: Generate explanation, fix, tests
+    Model-->>API: JSON response
+    API->>API: Validate Python syntax and normalize imports
+    API->>DB: Save session
+    API-->>UI: Patch, tests, diff
+    User->>UI: Request test run
+    UI->>API: POST /api/run
+    API->>Docker: Run original and proposed versions
+    Docker-->>API: Test output and coverage report
+    API->>DB: Save results
+    API-->>UI: Comparison results
 ```
 
-## Execution contract
+The local HTTP server binds to `127.0.0.1:8000`. Analysis calls Ollama synchronously with a 180-second timeout. Test execution also happens synchronously in the request handler. A process-wide lock serializes edits, deletes, reviews, and test runs. These choices keep the local MVP simple but limit concurrency and make it unsuitable as a public service.
 
-The exact same test module runs against original and fixed code. Each execution gets a new container and read-only submission folder. Python code never executes in the API process. Docker must already contain the locally built runner image; execution never pulls an image. Docker setup errors are distinct from test failures.
+## Test execution contract
 
-The container emits a structured `FIXLAB_REPORT` containing test counts, failures, errors, skips, covered and missing statement lines, and statement-line coverage percentage. This coverage metric counts AST statement start lines; it is not branch or expression coverage. Suites with no tests or only skipped tests fail. An original failure followed by fixed success is evidence for the generated tests, not a correctness guarantee. Generated code can fabricate output; this is an untrusted development tool, not a proof system.
+The same generated test module is used for original and proposed code. Each version runs in a new container with a read-only submission mount, no network, an unprivileged user, dropped capabilities, resource limits, and a 20-second timeout. The runner image must already exist locally; the backend does not pull images. Python source is not executed in the API process.
 
-Edits, reviews, deletes, and execution are serialized to prevent stale runs from overwriting newer revisions. Editing clears test evidence and resets review status. SQLite stores sessions, explanations, source and test output as local plaintext.
+The runner emits a structured report containing test counts, failures, errors, skips, covered and missing statement lines, and statement-line coverage. It counts AST statement start lines; it does not measure branches or expressions. Empty and all-skipped suites fail. An original failure followed by a proposed pass shows that the generated suite distinguishes those runs; it does not prove the fix is correct. Submitted and generated code is untrusted.
 
-## Scope
+These Docker settings are a local development boundary. A hosted service needs a separately reviewed isolation design, per-job limits, bounded storage, quotas, and operational cleanup.
 
-Python standard-library modules only. Local, single-user workbench. Vanilla JavaScript frontend, Python standard-library HTTP backend, SQLite, Ollama, Docker. No React/FastAPI/PostgreSQL dependencies in version 1. No GitHub account integration, cloud deployment, public execution, or authentication is claimed.
+## Persistence and concurrency
 
-## Future extensions
+The local edition stores source code, explanations, test output, and review decisions in plaintext in `data/sessions.db`. There are no accounts, tenant ownership checks, retention policy, or cloud backups. Editing a session increments its revision, clears prior test results, and resets the review decision. The process-wide operation lock prevents stale local operations from overwriting revisions, but it is not a distributed job queue.
 
-Background execution jobs, multi-file projects, PostgreSQL migration, repository pull requests, and stronger isolated workers can be added after the local workflow is verified. CI executes real Docker integration tests on GitHub-hosted Linux runners; local tests skip these when Docker is absent.
+The browser edition stores at most 30 sessions in local storage. Data remains in that browser profile and is not synchronized with the local edition.
 
-## Free browser edition
+## Browser execution boundary
 
-GitHub Pages serves static assets from docs/. WebLLM 0.2.86 performs real Qwen2.5-Coder-1.5B inference using WebGPU. Pyodide 0.28.3 runs the Python test suite in a Worker within a sandboxed opaque-origin iframe. A CSP limits runner script/network loading to the pinned Pyodide CDN path; the runner cannot access the application's DOM or browser storage. Each execution gets a fresh frame/Worker and a 60-second deadline. Generated code remains untrusted and can influence its own results. Browser sessions use localStorage with a 30-session cap; this differs from SQLite storage in the local edition. Inference is on the user's GPU, not a cloud server.
+The Pages edition uses pinned WebLLM and Pyodide versions. Python execution runs in a Worker inside an opaque-origin iframe, with a content security policy restricting runner asset and network loading to the pinned Pyodide CDN path. Each execution uses a fresh frame and Worker with a 60-second deadline. This separation reduces access to the application DOM and browser storage, but generated code may still affect its own test results; it is not a proof system.
+
+## CI
+
+GitHub Actions runs on pushes and pull requests. The workflow builds the Docker runner image, runs the Python unit/API and integration suite, and checks JavaScript syntax for the local and browser editions.
+
+## Planned evolution
+
+The [scaling roadmap](../SCALE_ROADMAP.md) sequences the hosted service boundary, durable background jobs, accounts and tenant-safe storage, isolated workers, and operational metrics. Repository import, GitHub Issues/Projects, coding-agent workflows, and pull request creation are product ideas; they are not implemented in the current application.
