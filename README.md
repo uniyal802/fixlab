@@ -16,8 +16,6 @@ FixLab is an AI-assisted Python debugging workbench. It analyzes a Python module
 | GitHub workflow guide | [Issues, pull requests, agents, projects, and deployment](docs/GITHUB_WORKFLOW.md) |
 | Product roadmap | [SCALE_ROADMAP.md](SCALE_ROADMAP.md) |
 
-> The browser edition runs inference and Python tests on the user's device. The local backend is a single-user development MVP. It is not a hosted multi-user service, and it does not currently connect to GitHub repositories or create pull requests.
-
 ## Product workflow
 
 1. Provide a Python module and the error or unexpected behavior.
