@@ -97,15 +97,19 @@ The local edition exposes a same-origin JSON API:
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/health` | Check configured model and Docker runner readiness. |
-| `POST /api/analyze` | Analyze submitted code and generate a patch and tests. |
+| `POST /api/analyze` | Queue analysis and return a durable `job_id` (`202 Accepted`). |
+| `GET /api/jobs/<id>` | Read job state and, when complete, its result or bounded error. |
+| `POST /api/jobs/<id>/cancel` | Cancel a queued or running local job. |
 | `GET /api/sessions` | List recent local sessions. |
 | `GET /api/sessions/<id>` | Retrieve one local session. |
 | `POST /api/edit` | Save a revised proposed module and tests. |
-| `POST /api/run` | Run original and proposed code through the same tests. |
+| `POST /api/run` | Queue isolated original/proposed test runs and return a `job_id`. |
 | `POST /api/review` | Record an accepted or rejected review decision. |
 | `POST /api/delete` | Delete a local session. |
 
 Session data is stored locally in plaintext. Accepting a patch records a review decision; it does not change a Git repository.
+
+The API submits slow work to a SQLite-backed local queue. Run the project with `./start.sh` to start both the HTTP API and its separate worker. Jobs survive API restarts; a restarted worker requeues interrupted jobs once, and each job has a hard deadline. Worker concurrency is configurable with `FIXLAB_WORKERS` (1–4, default 1). The queue accepts at most 200 active jobs, test output is capped at 32 KB per container, and job errors are capped at 2,000 characters. This is a single-user local queue, not a hosted multi-worker service.
 
 ## Verification
 

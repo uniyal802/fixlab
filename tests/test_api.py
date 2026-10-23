@@ -30,6 +30,12 @@ class ApiTests(unittest.TestCase):
     def test_cross_origin_write_rejected(self):
         with self.assertRaises(urllib.error.HTTPError) as context:self.request('/api/analyze',{'code':'pass'},'https://example.com')
         self.assertEqual(context.exception.code,403)
+    def test_analysis_returns_durable_job_and_cancel_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(core,'DB',Path(tmp)/'db'):
+            accepted=self.request('/api/analyze',{'code':'def f(): return 1','error':''})
+            self.assertEqual(accepted['state'],'queued')
+            self.assertEqual(self.request('/api/jobs/'+accepted['job_id'])['state'],'queued')
+            self.assertEqual(self.request('/api/jobs/'+accepted['job_id']+'/cancel',{})['state'],'cancelled')
     def test_review_edit_delete_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(core,'DB',Path(tmp)/'db'):
             sid=core.save({'id':'example','original_code':'x=1','analysis':{'summary':'Example'},'review':'pending'},'example')

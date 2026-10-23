@@ -6,8 +6,42 @@ from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 import core
+from worker import recover_after_restart
 
 class CoreTests(unittest.TestCase):
+    def test_job_persists_transitions_and_cancellation(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(core, 'DB', Path(tmp)/'data'/'db.sqlite'):
+            accepted = core.submit_job('analysis', {'code': 'x=1', 'error': ''})
+            self.assertEqual(core.get_job(accepted['job_id'])['state'], 'queued')
+            self.assertEqual(core.claim_job(), accepted['job_id'])
+            self.assertEqual(core.get_job(accepted['job_id'])['attempts'], 1)
+            core.finish_job(accepted['job_id'], 'succeeded', result={'id': 'saved'})
+            self.assertEqual(core.get_job(accepted['job_id'])['result'], {'id': 'saved'})
+            cancelled = core.submit_job('test_run', {'id': 'session'})
+            self.assertEqual(core.cancel_job(cancelled['job_id'])['state'], 'cancelled')
+            failed = core.submit_job('analysis', {'code': 'x=1', 'error': ''})
+            core.claim_job()
+            core.finish_job(failed['job_id'], 'failed', error='model unavailable')
+            self.assertEqual(core.get_job(failed['job_id'])['error'], 'model unavailable')
+
+    def test_job_records_survive_database_reopen(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(core, 'DB', Path(tmp)/'jobs.sqlite'):
+            job = core.submit_job('analysis', {'code': 'pass', 'error': ''})
+            first = core.get_job(job['job_id'])
+            second = core.get_job(job['job_id'])
+            self.assertEqual(first['created'], second['created'])
+            self.assertEqual(second['state'], 'queued')
+
+    def test_worker_restart_requeues_once_then_fails_stale_job(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(core, 'DB', Path(tmp)/'jobs.sqlite'):
+            first=core.submit_job('analysis', {'code':'pass','error':''})
+            self.assertEqual(core.claim_job(), first['job_id'])
+            recover_after_restart()
+            self.assertEqual(core.get_job(first['job_id'])['state'], 'queued')
+            self.assertEqual(core.claim_job(), first['job_id'])
+            recover_after_restart()
+            self.assertEqual(core.get_job(first['job_id'])['state'], 'failed')
+
     def test_invalid_ai_response(self):
         for response in ({}, {'summary':'x','explanation':'x','fixed_code':'def :','tests':'pass'}):
             with self.assertRaises((ValueError, SyntaxError)):

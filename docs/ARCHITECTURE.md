@@ -16,25 +16,33 @@ sequenceDiagram
     actor User
     participant UI as Browser UI
     participant API as Python API
+    participant Worker as Local worker
     participant Model as Ollama
     participant DB as SQLite
     participant Docker as Runner container
     User->>UI: Submit module and error
     UI->>API: POST /api/analyze
-    API->>Model: Generate explanation, fix, tests
+    API->>DB: Persist queued job
+    API-->>UI: 202 Accepted + job_id
+    UI->>API: Poll GET /api/jobs/{id}
+    Worker->>DB: Claim queued job
+    Worker->>Model: Generate explanation, fix, tests
     Model-->>API: JSON response
     API->>API: Validate Python syntax and normalize imports
-    API->>DB: Save session
+    Worker->>DB: Save session and job result
     API-->>UI: Patch, tests, diff
     User->>UI: Request test run
     UI->>API: POST /api/run
-    API->>Docker: Run original and proposed versions
-    Docker-->>API: Test output and coverage report
-    API->>DB: Save results
+    API->>DB: Persist queued test job
+    API-->>UI: 202 Accepted + job_id
+    Worker->>Docker: Run original and proposed versions
+    Docker-->>Worker: Test output and coverage report
+    Worker->>DB: Save results
+    UI->>API: Poll GET /api/jobs/{id}
     API-->>UI: Comparison results
 ```
 
-The local HTTP server binds to `127.0.0.1:8000`. Analysis calls Ollama synchronously with a 180-second timeout. Test execution also happens synchronously in the request handler. A process-wide lock serializes edits, deletes, reviews, and test runs. These choices keep the local MVP simple but limit concurrency and make it unsuitable as a public service.
+The local HTTP server binds to `127.0.0.1:8000`. `start.sh` starts a separate SQLite-backed worker alongside it. Analysis and test requests return a job ID promptly; clients poll job state and can request cancellation. Jobs and results survive API restarts. The worker recovers interrupted jobs once, limits concurrency to 1–4, enforces 190-second analysis and 55-second test-job deadlines, and allows one retry. A queue cap of 200 active jobs prevents unbounded admission. This remains a single-user local workflow, not a public service or multi-host queue.
 
 ## Test execution contract
 
@@ -46,7 +54,7 @@ These Docker settings are a local development boundary. A hosted service needs a
 
 ## Persistence and concurrency
 
-The local edition stores source code, explanations, test output, and review decisions in plaintext in `data/sessions.db`. There are no accounts, tenant ownership checks, retention policy, or cloud backups. Editing a session increments its revision, clears prior test results, and resets the review decision. The process-wide operation lock prevents stale local operations from overwriting revisions, but it is not a distributed job queue.
+The local edition stores source code, explanations, test output, job inputs/results, and review decisions in plaintext in `data/sessions.db`. There are no accounts, tenant ownership checks, retention policy, or cloud backups. Editing a session increments its revision, clears prior test results, and resets the review decision. The worker and API share the local SQLite database; do not expose this service to untrusted network clients.
 
 The browser edition stores at most 30 sessions in local storage. Data remains in that browser profile and is not synchronized with the local edition.
 
