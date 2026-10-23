@@ -4,7 +4,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
-from core import analyze, get, history, run_code, save, health, edit, delete
+from core import (get, history, save, health, edit, delete, submit_job,
+                  get_job, cancel_job, session_has_active_job, validate_analysis_input)
 
 FRONTEND = Path(__file__).resolve().parents[1] / 'frontend'
 RUN_LOCK = threading.Lock()
@@ -25,6 +26,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(health())
             if path == '/api/sessions':
                 return self.respond(history())
+            if path.startswith('/api/jobs/'):
+                return self.respond(get_job(path.rsplit('/', 1)[1]))
             if path.startswith('/api/sessions/'):
                 return self.respond(get(path.rsplit('/', 1)[1]))
             files = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css'}
@@ -56,11 +59,16 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Expected JSON object')
             path = urlparse(self.path).path
             if path == '/api/analyze':
-                return self.respond(analyze(data.get('code'), data.get('error', '')))
+                validate_analysis_input(data.get('code'), data.get('error', ''))
+                return self.respond(submit_job('analysis', {'code': data['code'], 'error': data.get('error', '')}), 202)
+            if path.startswith('/api/jobs/') and path.endswith('/cancel'):
+                return self.respond(cancel_job(path.split('/')[-2]))
             if path == '/api/edit':
                 if not RUN_LOCK.acquire(blocking=False):
                     return self.respond({'error': 'A test run or edit is active; try again when it finishes'}, 409)
                 try:
+                    if session_has_active_job(data.get('id', '')):
+                        return self.respond({'error': 'A test job is active for this session'}, 409)
                     return self.respond(edit(data.get('id', ''), data.get('fixed_code'), data.get('tests')))
                 finally:
                     RUN_LOCK.release()
@@ -68,21 +76,33 @@ class Handler(BaseHTTPRequestHandler):
                 if not RUN_LOCK.acquire(blocking=False):
                     return self.respond({'error': 'A test run or edit is active; try again when it finishes'}, 409)
                 try:
+                    if session_has_active_job(data.get('id', '')):
+                        return self.respond({'error': 'A test job is active for this session'}, 409)
                     delete(data.get('id', ''))
                     return self.respond({'deleted': True})
                 finally:
                     RUN_LOCK.release()
             if path in ('/api/run', '/api/review'):
+                if path == '/api/run':
+                    if not RUN_LOCK.acquire(blocking=False):
+                        return self.respond({'error': 'Another session operation is active'}, 409)
+                    try:
+                        session = get(data.get('id', ''))
+                        if session_has_active_job(session['id']):
+                            return self.respond({'error': 'A test job is already active for this session'}, 409)
+                        return self.respond(submit_job('test_run', {'id': session['id']}), 202)
+                    finally:
+                        RUN_LOCK.release()
                 if not RUN_LOCK.acquire(blocking=False):
                     return self.respond({'error': 'Another session operation is active'}, 409)
                 try:
+                    if session_has_active_job(data.get('id', '')):
+                        return self.respond({'error': 'A test job is active for this session'}, 409)
                     session = get(data.get('id', ''))
                     if path == '/api/review':
                         if data.get('review') not in ('accepted', 'rejected'):
                             raise ValueError('Invalid review status')
                         session['review'] = data['review']
-                    else:
-                        session['results'] = {'original': run_code(session['original_code'], session['analysis']['tests']), 'fixed': run_code(session['analysis']['fixed_code'], session['analysis']['tests'])}
                     save(session, session['id'])
                     return self.respond(session)
                 finally:

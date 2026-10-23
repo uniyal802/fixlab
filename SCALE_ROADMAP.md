@@ -23,7 +23,7 @@ This roadmap moves FixLab from a local/browser MVP toward a useful debugging pro
 | --- | --- | --- | --- |
 | M0 · Working prototype | Local Ollama/Docker app and public browser edition | Complete | Both editions documented; CI and demo links available |
 | M1 · Trustworthy public demo | Refined landing page, product workflow, labeled evaluation harness, honest limitations | In progress | Demo is easy to understand; dataset checks pass in CI; evaluation claims link to reproducible reports |
-| M2 · Reliable local jobs | Durable job records, queue/worker interface, cancellation, retry, bounded logs | Planned | Restart-safe jobs with tested state transitions and hard deadlines |
+| M2 · Reliable local jobs | Durable job records, queue/worker interface, cancellation, retry, bounded logs | Complete | Restart-safe jobs with tested state transitions and hard deadlines |
 | M3 · GitHub-connected investigations | Explicit repo authorization, branch/file selection, revision provenance | Planned | Revocable least-privilege access and owner-scoped source records |
 | M4 · Reviewable coding-agent changes | Isolated agent task, constrained branch, CI results, user-approved pull request | Planned | Agent output is auditable; no automatic merge; user approves PR creation |
 | M5 · Hosted service | Identity, quotas, durable storage, hardened execution workers, monitoring, rollback | Planned | Tenant isolation and operational readiness demonstrated before public code execution |
@@ -99,7 +99,7 @@ This roadmap moves FixLab from a local/browser MVP toward a useful debugging pro
 
 ## First implementation slice
 
-After the public demo/evaluation milestone, the next code milestone should be **durable jobs**, because both model inference and test execution are slow synchronous requests today. Implement job records and state transitions, then submit/status/result/cancel endpoints and a separate worker entry point. Preserve the local workflow while moving execution behind the worker interface. This creates the foundation for bounded concurrency before adding accounts, repository access, agents, or pull requests.
+The local API now persists analysis and test jobs in SQLite and runs them in a separate worker process started by `./start.sh`. Submission returns a job ID; clients can poll status/results or request cancellation. Interrupted jobs recover once, concurrency and deadlines are bounded, and worker output is not retained in unbounded buffers. This remains local-only and single-user; it is not a production queue or multi-tenant execution service.
 
 Suggested initial service objectives to validate with real measurements:
 
@@ -114,7 +114,7 @@ These are proposed starting targets, not current measurements or guarantees.
 
 1. Merge portfolio and contribution documentation.
 2. Set up the GitHub Project board and prioritize scoped issues.
-3. Implement and validate the durable job layer locally.
+3. Complete the durable local job layer (M2); keep production queue and hosted isolation work in M5.
 4. Add identity, tenant-safe storage, and quotas.
 5. Review and build isolated workers.
 6. Add repository authorization, agent tasks, and user-approved PR creation.
