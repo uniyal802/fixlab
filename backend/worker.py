@@ -7,7 +7,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from core import claim_job, connection, get_job, finish_job
+from auth import validate_configuration
+from core import claim_job, connection, get_job, finish_job, cleanup_expired, validate_runtime_configuration
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = Path(__file__).with_name('job_runner.py')
@@ -77,9 +78,13 @@ def poll_active(active):
 
 
 def run_forever():
+    validate_configuration()
+    validate_runtime_configuration()
     recover_after_restart()
+    cleanup_expired()
     limit = max(1, min(4, int(os.getenv('FIXLAB_WORKERS', '1'))))
     active = {}
+    last_cleanup = time.monotonic()
     stopping = False
     def request_stop(_signum, _frame):
         nonlocal stopping
@@ -91,6 +96,9 @@ def run_forever():
         while not stopping:
             dispatch_once(active, limit)
             poll_active(active)
+            if time.monotonic() - last_cleanup >= 3600:
+                cleanup_expired()
+                last_cleanup = time.monotonic()
             time.sleep(0.2 if active else 0.75)
     finally:
         for job_id, (process, _started, output, _kind, job_tmp) in active.items():

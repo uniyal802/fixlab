@@ -109,7 +109,9 @@ The local edition exposes a same-origin JSON API:
 
 Session data is stored locally in plaintext. Accepting a patch records a review decision; it does not change a Git repository.
 
-The API submits slow work to a SQLite-backed local queue. Run the project with `./start.sh` to start both the HTTP API and its separate worker. Jobs survive API restarts; a restarted worker requeues interrupted jobs once, and each job has a hard deadline. Worker concurrency is configurable with `FIXLAB_WORKERS` (1–4, default 1). The queue accepts at most 200 active jobs, test output is capped at 32 KB per container, and job errors are capped at 2,000 characters. This is a single-user local queue, not a hosted multi-worker service.
+The API submits slow work to a SQLite-backed local queue. Run the project with `./start.sh` to start both the HTTP API and its separate worker. Jobs survive API restarts; a restarted worker requeues interrupted jobs once, and each job has a hard deadline. Worker concurrency is configurable with `FIXLAB_WORKERS` (1–4, default 1). The default per-owner limits are 20 active jobs, 100 KB per request, and 100 MB of stored session/job data; hosted deployments can override these defaults per token. Test output is capped at 32 KB per container, and job errors are capped at 2,000 characters. The local default remains single-user and loopback-only.
+
+The API supports an opt-in owner-scoped bearer-token mode and configurable retention. See [Identity, quotas, and data retention](docs/IDENTITY_AND_DATA.md) for setup, database migration, and the limits of this API-only identity adapter. This does not add a sign-up flow or make the project ready for public code execution.
 
 ## Verification
 
@@ -141,6 +143,7 @@ Keep claims about model quality, performance, usage, coverage, and production re
 - [Product workflow](docs/WORKFLOW.md)
 - [Evaluation harness](docs/EVALUATION.md)
 - [GitHub workflow and project setup](docs/GITHUB_WORKFLOW.md)
+- [Identity, quotas, and data retention](docs/IDENTITY_AND_DATA.md)
 - [Coding-agent guide](AGENTS.md)
 - [Scaling roadmap](SCALE_ROADMAP.md)
 
@@ -148,6 +151,6 @@ Keep claims about model quality, performance, usage, coverage, and production re
 
 - AI-generated code and tests may be incorrect. A passing test suite is evidence, not a correctness proof.
 - Statement-line coverage is not branch coverage.
-- The local backend has no authentication or per-user authorization and stores sessions locally in plaintext.
+- The default local backend uses one local owner, binds to loopback, and stores sessions locally in plaintext. Hosted-mode bearer credentials must be configured and protected by the operator; the repository does not provide an identity provider or sign-up flow.
 - Docker is a development isolation boundary, not a hardened public multi-tenant service. A production service requires stronger execution isolation, authentication, quotas, bounded storage, and deployment-specific security review.
 - Do not submit secrets or sensitive source code to a model or environment unless you have reviewed its data handling.

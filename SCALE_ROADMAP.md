@@ -26,7 +26,7 @@ This roadmap moves FixLab from a local/browser MVP toward a useful debugging pro
 | M2 · Reliable local jobs | Durable job records, queue/worker interface, cancellation, retry, bounded logs | Complete | Restart-safe jobs with tested state transitions and hard deadlines |
 | M3 · GitHub-connected investigations | Explicit repo authorization, branch/file selection, revision provenance | Planned | Revocable least-privilege access and owner-scoped source records |
 | M4 · Reviewable coding-agent changes | Isolated agent task, constrained branch, CI results, user-approved pull request | Planned | Agent output is auditable; no automatic merge; user approves PR creation |
-| M5 · Hosted service | Identity, quotas, durable storage, hardened execution workers, monitoring, rollback | Planned | Tenant isolation and operational readiness demonstrated before public code execution |
+| M5 · Hosted service | Identity, quotas, durable storage, hardened execution workers, monitoring, rollback | In progress | Tenant isolation and operational readiness demonstrated before public code execution |
 
 ## Step-by-step plan
 
