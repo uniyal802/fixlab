@@ -42,7 +42,7 @@ sequenceDiagram
     API-->>UI: Comparison results
 ```
 
-The local HTTP server binds to `127.0.0.1:8000`. `start.sh` starts a separate SQLite-backed worker alongside it. Analysis and test requests return a job ID promptly; clients poll job state and can request cancellation. Jobs and results survive API restarts. The worker recovers interrupted jobs once, limits concurrency to 1–4, enforces 190-second analysis and 55-second test-job deadlines, and allows one retry. A queue cap of 200 active jobs prevents unbounded admission. This remains a single-user local workflow, not a public service or multi-host queue.
+The local HTTP server binds to `127.0.0.1:8000`. `start.sh` starts a separate SQLite-backed worker alongside it. Analysis and test requests return a job ID promptly; clients poll job state and can request cancellation. Jobs and results survive API restarts. The worker recovers interrupted jobs once, limits concurrency to 1–4, enforces 190-second analysis and 55-second test-job deadlines, and allows one retry. The default owner may have 20 active jobs. The local default remains a single-user workflow, not a public service or multi-host queue.
 
 ## Test execution contract
 
@@ -54,7 +54,7 @@ These Docker settings are a local development boundary. A hosted service needs a
 
 ## Persistence and concurrency
 
-The local edition stores source code, explanations, test output, job inputs/results, and review decisions in plaintext in `data/sessions.db`. There are no accounts, tenant ownership checks, retention policy, or cloud backups. Editing a session increments its revision, clears prior test results, and resets the review decision. The worker and API share the local SQLite database; do not expose this service to untrusted network clients.
+SQLite stores source code, explanations, test output, job inputs/results, and review decisions in plaintext in `data/sessions.db`. Additive schema migration assigns pre-existing records to the `local` owner. In the default local mode, the API uses that one owner. With `FIXLAB_AUTH_MODE=required`, every `/api/*` route requires a configured bearer token mapped to an owner, and session/job reads and writes are filtered by that owner. Per-token active-job, request-size, and storage quotas are configurable. The worker enforces configured retention by deleting expired sessions and terminal job records at startup and hourly. Local retention defaults to disabled; required-auth mode requires a positive retention period. See [identity and data handling](IDENTITY_AND_DATA.md) for migration and configuration instructions. This API adapter is not an identity provider, and the service must remain behind an appropriately secured deployment boundary.
 
 The browser edition stores at most 30 sessions in local storage. Data remains in that browser profile and is not synchronized with the local edition.
 
@@ -68,4 +68,4 @@ GitHub Actions runs on pushes and pull requests. The workflow builds the Docker 
 
 ## Planned evolution
 
-The [scaling roadmap](../SCALE_ROADMAP.md) sequences the hosted service boundary, durable background jobs, accounts and tenant-safe storage, isolated workers, and operational metrics. Repository import, GitHub Issues/Projects, coding-agent workflows, and pull request creation are product ideas; they are not implemented in the current application.
+The [scaling roadmap](../SCALE_ROADMAP.md) sequences durable local jobs, owner-scoped data, repository intake, agent workflows, and the remaining hosted-service controls. Repository import, GitHub Issues/Projects, coding-agent workflows, and pull request creation remain planned product capabilities.

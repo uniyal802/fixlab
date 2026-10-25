@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -7,6 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 import core
 from worker import recover_after_restart
+from migrate_owner import migrate_owner
 
 class CoreTests(unittest.TestCase):
     def test_job_persists_transitions_and_cancellation(self):
@@ -41,6 +43,77 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(core.claim_job(), first['job_id'])
             recover_after_restart()
             self.assertEqual(core.get_job(first['job_id'])['state'], 'failed')
+
+    def test_owner_scoped_quotas_and_storage_isolation(self):
+        limits={'active_jobs':1,'request_bytes':10000,'storage_bytes':5000}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(core, 'DB', Path(tmp)/'jobs.sqlite'):
+            first=core.submit_job('analysis', {'code':'x','error':''}, 'owner-a', limits)
+            with self.assertRaisesRegex(ValueError,'Active job quota'):
+                core.submit_job('analysis', {'code':'y','error':''}, 'owner-a', limits)
+            other=core.submit_job('analysis', {'code':'y','error':''}, 'owner-b', limits)
+            self.assertNotEqual(first['job_id'],other['job_id'])
+            with self.assertRaisesRegex(ValueError,'Job input is too large'):
+                core.submit_job('analysis', {'code':'x'*100,'error':''}, 'owner-c', {'request_bytes':10})
+            with self.assertRaisesRegex(ValueError,'Storage quota'):
+                core.save({'large':'x'*100}, owner_id='owner-c', quotas={'storage_bytes':50})
+            limited=core.submit_job('analysis', {'code':'x','error':''}, 'owner-d', {'storage_bytes':80})
+            core.claim_job()
+            core.claim_job()
+            self.assertEqual(core.claim_job(),limited['job_id'])
+            with self.assertRaisesRegex(ValueError,'Storage quota'):
+                core.finish_job(limited['job_id'],'succeeded',result={'output':'x'*200})
+            core.finish_job(limited['job_id'],'failed',error='Storage quota exceeded')
+            self.assertEqual(core.get_job(limited['job_id'],'owner-d')['state'],'failed')
+            limited=core.submit_job('analysis', {'code':'x','error':''}, 'owner-d', {'storage_bytes':80})
+            core.claim_job()
+            with self.assertRaisesRegex(ValueError,'Storage quota'):
+                core.finish_job(limited['job_id'],'succeeded',result={'output':'x'*200})
+            core.finish_job(limited['job_id'],'failed',error='Storage quota exceeded')
+            self.assertEqual(core.get_job(limited['job_id'],'owner-d')['state'],'failed')
+
+    def test_expired_sessions_and_terminal_job_payloads_are_removed(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(core, 'DB', Path(tmp)/'jobs.sqlite'):
+            old=core.save({'analysis':{'summary':'old'}},owner_id='owner-a')
+            old_job=core.submit_job('analysis',{'code':'secret','error':''},'owner-a')
+            core.claim_job()
+            core.finish_job(old_job['job_id'],'failed',error='expired')
+            with core.connection() as db:
+                db.execute("UPDATE sessions SET created='2000-01-01 00:00:00' WHERE id=?",(old,))
+                db.execute('UPDATE jobs SET finished=? WHERE id=?',(1,old_job['job_id']))
+            self.assertEqual(core.cleanup_expired(1),{'sessions_deleted':1,'jobs_deleted':1})
+            with self.assertRaises(ValueError):core.get(old,'owner-a')
+            with self.assertRaises(ValueError):core.get_job(old_job['job_id'],'owner-a')
+
+    def test_session_deletion_removes_terminal_test_job_copy(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(core,'DB',Path(tmp)/'jobs.sqlite'):
+            session_id=core.save({'id':'sensitive-session','analysis':{'summary':'private'}},owner_id='owner-a')
+            job=core.submit_job('test_run',{'id':session_id},'owner-a')
+            self.assertEqual(core.claim_job(),job['job_id'])
+            core.finish_job(job['job_id'],'succeeded',result={'source':'private code'})
+            core.delete(session_id,'owner-a')
+            with self.assertRaises(ValueError):core.get_job(job['job_id'],'owner-a')
+
+    def test_legacy_database_owner_migration_and_backup(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(core,'DB',Path(tmp)/'legacy.sqlite'):
+            with sqlite3.connect(core.DB) as db:
+                db.execute('CREATE TABLE sessions (id TEXT PRIMARY KEY, created TEXT DEFAULT CURRENT_TIMESTAMP, payload TEXT NOT NULL)')
+                db.execute('INSERT INTO sessions(id,payload) VALUES (?,?)',('legacy','{"analysis":{"summary":"legacy"}}'))
+                db.execute('''CREATE TABLE jobs (id TEXT PRIMARY KEY,kind TEXT NOT NULL,state TEXT NOT NULL,payload TEXT NOT NULL,result TEXT,error TEXT,cancel_requested INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,created REAL NOT NULL,updated REAL NOT NULL,started REAL,finished REAL)''')
+                db.execute("INSERT INTO jobs(id,kind,state,payload,created,updated) VALUES ('old-job','analysis','queued','{}',1,1)")
+            with core.connection() as db:
+                self.assertEqual(db.execute('SELECT owner_id FROM sessions WHERE id=?',('legacy',)).fetchone()[0],'local')
+                self.assertEqual(db.execute('SELECT owner_id,quotas FROM jobs WHERE id=?',('old-job',)).fetchone(),('local','{}'))
+            preview=migrate_owner(core.DB,'account-1')
+            self.assertFalse(preview['applied'])
+            self.assertEqual(preview,{'sessions':1,'jobs':1,'applied':False})
+            self.assertEqual(core.get('legacy')['analysis']['summary'],'legacy')
+            backup=Path(tmp)/'backup.sqlite'
+            result=migrate_owner(core.DB,'account-1',backup,True)
+            self.assertTrue(result['applied'])
+            self.assertEqual(core.get('legacy','account-1')['analysis']['summary'],'legacy')
+            with sqlite3.connect(backup) as db:
+                self.assertEqual(db.execute('SELECT owner_id FROM sessions WHERE id=?',('legacy',)).fetchone()[0],'local')
+                self.assertEqual(db.execute('SELECT owner_id FROM jobs WHERE id=?',('old-job',)).fetchone()[0],'local')
 
     def test_invalid_ai_response(self):
         for response in ({}, {'summary':'x','explanation':'x','fixed_code':'def :','tests':'pass'}):
